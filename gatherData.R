@@ -2,7 +2,7 @@
 
 library(ff)
 
-url.1e8 <- '../data/simulation/1e8/trj.a7.0.b5.0.c0.60.1e8.out'
+url.1e8 <- 'data/raw/trj.a7.0.b5.0.c0.60.1e8.out'
 #url.1e9 <- '../data/simulation/1e9/trj.a7.0.b3.0.c0.60.1e9.out'
 
 
