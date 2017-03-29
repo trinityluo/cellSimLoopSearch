@@ -3,6 +3,19 @@
 library(data.table)
 library(dplyr)
 
+# # initialize var
+# InitVar <- function() {
+#   # empty data table for future results
+#   results <<- data.table(count = numeric(), loops = character(), 
+#                         flux = numeric(), weight = numeric())
+#   
+#   # number of total simulated steps, begin from 1
+#   totalSteps <<- 1
+#   
+#   return(NULL)
+# }
+
+
 # find loop in trjactory, cut the loop off, output the loop and cutted trjactory in a list
 RemoveLoop <- function(trj) {
   if (length(trj) == 0)
@@ -16,7 +29,8 @@ RemoveLoop <- function(trj) {
       lastind <- ht[[key]]
       loop <- trj[lastind:(j-1)] %>% as.character()
       if(length(unique(loop)) > 2) {
-        return(list(loop=loop,newtrj=trj[-(lastind:j)]))
+        return(list(loop = loop, newtrj = trj[-(lastind:j)], 
+                    steps = length(unique(loop))))
       }
     }
     ht[[key]] <- j
@@ -34,7 +48,7 @@ ReorderLoop <- function(loop) {
 }
 
 
-UniqueLoop <- function(loop, resultsDT) {
+UniqueLoop <- function(loop, resultsDT, steps) {
   DT <- resultsDT
   ind <- DT[loops == loop, which = TRUE]
   if (length(ind) != 0) {
@@ -44,7 +58,8 @@ UniqueLoop <- function(loop, resultsDT) {
     
   }
   else {
-    DT <- rbindlist(list(DT, data.table(1, loop, flux = NA_real_, weight = NA_real_)))
+    DT <- rbindlist(list(DT, data.table(1, loop, steps = steps,
+                                        flux = NA_real_, weight = NA_real_)))
     
     return(DT)
   }
@@ -56,5 +71,35 @@ RobustRatio <- function(x) {
   logx <- -log(x)
   rr <- abs(mean(logx) - min(logx))/sd(logx)
   return(rr)
+}
+
+# dec to bin
+dec2bin <- function(x, nBits = 10){
+  tail(rev(as.numeric(intToBits(x))),nBits)
+}
+
+bin2dec <- function(x, base = 2) {
+  x <- paste(x, collapse = '')
+  split_base = strsplit(as.character(x), split = "")
+  return(sapply(split_base, function(x) sum(as.numeric(x) * base^(rev(seq_along(x) - 1)))))
+}
+
+# TotalInput <- function(sNowBinary) {
+#   totalIn <- sNowBinary * matrixA %>% colSums()
+#   totalIn[3] <- 0.9
+#   totalIn[7] <- -0.9
+#   
+#   return(totalIn)
+# }
+
+TotalInput <- function(sNowBinary, i, matrixA) {
+  sum <- 0
+  for(j in 1:nodeNum) {
+    sum <- sum + matrixA[j, i] * sNowBinary[j]
+  }
+  if(i == 3) sum = sum + 0.9
+  if(i == 7) sum = sum - 0.9
+  
+  return(sum)
 }
 

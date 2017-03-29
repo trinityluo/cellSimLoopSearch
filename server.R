@@ -6,88 +6,203 @@
 
 
 library(shiny)
+library(shinydashboard)
+library(shinyjs)
 library(plotly)
 
+
 source('R/functions.R')
+source("runAll.R")
 
-GetLoopData <- function(path){
-  loopData <- read.csv(path)
-  
-  return(loopData)
-}
 
-# Define server logic required to draw a histogram
+
+
 shinyServer(function(input, output, session) {
   
-  #
-  LoopInfo <- reactive({
-    input$refresh # Refresh if button clicked
+  # observe if any parameters changed, if so, re-create results.Rds
+  observe({
     
-    interval <- as.numeric(input$interval)
-    
-    # Invalidate this reactive after the interval has passed, so that data is
-    # fetched again.
-    invalidateLater(interval * 1000, session)
-    
-    GetLoopData('data/processed/results.csv') %>% arrange(desc(count))
-    
+    input$alpha
+    input$beta
+    input$gamma
+    unlink('data/processed/results.Rds')
+    # initialize results.Rds
+    results <- data.table(count = numeric(), loops = character(), steps = numeric(),
+                          flux = numeric(), weight = numeric())
+    saveRDS(results, 'data/processed/results.Rds')
   })
   
-  # Get time that vehicles locations were updated
-  lastUpdateTime <- reactive({
-    LoopInfo() # Trigger this reactive when vehicles locations are updated
-    Sys.time()
-  }) 
+  #run simulation
+  simRuner <- observe({
+
+    # run simulation based on input parameters
+    results <- readRDS('data/processed/results.Rds')
+    results <- DecomposeTrj(input$alpha, input$beta, input$gamma/100, matrixA, 
+                            1024, results) %>% 
+      arrange(desc(count))
+    saveRDS(results, 'data/processed/results.Rds')
+    invalidateLater(100, session)
+    })
   
-  # Number of seconds since last update
-  output$timeSinceLastUpdate <- renderUI({
-    # Trigger this every 5 seconds
-    invalidateLater(1000, session)
-    p(
-      class = "text-muted",
-      "Data refreshed ",
-      round(difftime(Sys.time(), lastUpdateTime(), units="secs")),
-      " seconds ago."
-    )
+    # When the client ends the session, suspend the observer and
+    session$onSessionEnded(function() {
+      simRuner$suspend()
+      unlink('data/processed/results.Rds')
+    })
+  
+  # every 2secs, re-read the results.Rds
+  fileReaderData <- reactiveFileReader(2000, session,
+                                     'data/processed/results.Rds', readRDS)
+  
+  # output parameters value to text
+  output$paramInfoText <- renderText({
+    paste('Alpha=', input$alpha, ', Beta=', input$beta, ', Gamma=', input$gamma, '%')
   })
   
-  #
-  output$loopTable <- renderTable({
-    df <- LoopInfo() 
-    df$flux <- as.character(format(df$flux, scientific = T, digits = 3))
+  # output rr calculation
+  output$rrInfoTable <- renderTable({
+    df <- fileReaderData()
+    value <- df[, input$rrtype]
+    logx <- -log(value) %>% round(2)
+    avg <- mean(logx) %>% round(2)
+    minValue <- min(logx) %>% round(2)
+    std <- sd(logx) %>% round(2)
+    rr <- abs(mean(logx) - min(logx))/sd(logx)
+    rr <- round(rr, 2)
     
-    return(head(df, 10))
+    formula <- c('rr', '=', 'average', '-', 'minimum', '/', 'standard deviation')
+    value <- c(rr, '=', avg, '-', minValue, '/', std)
+    
+    outputDf <- as.data.frame(rbind(value)) 
+    colnames(outputDf) <- formula
+    
+    return(outputDf)
   })
   
+  # output loop table
+  output$loopResultsTable <- renderTable({
+    df <- fileReaderData()
+    head(df)
+  })
+  
+  # output RR
   output$rr <- renderValueBox({
-    df <- LoopInfo()
+    df <- fileReaderData()
     rrValue <- df[, input$rrtype] %>% RobustRatio()
     valueBox(
-      round(rrValue, 2), "RR", icon = icon("list"), color = "light-blue" 
-    )
+      round(rrValue, 2), "RR")
   })
   
-  # output$rrPlot <- renderPlotly({
-  #   df <- LoopInfo()
-  #   rrValue <- df[, input$rrtype] %>% RobustRatio()
-  #   
-  #   now <- as.POSIXlt(Sys.time())
-  #   tm <- seq(0, 600, length.out = nrow())
-  #   
-  #   rrdf <- data.frame(x = now - tm)
-  #   
-  #   x <- now - tm
-  #   y <- rrValue <- df[, input$rrtype] %>% RobustRatio()
-  #   p <- plot_ly(df, x ~x, y = )
-  # })
+  # output bio-loop weight
+  output$weight <- renderValueBox({
+    df <- fileReaderData()
+    weightValue <- df %>% 
+      filter(loops == '4-132-130-138-154-19-101-100-612-356') %>% 
+      select(weight)
+    weightValue <- paste(round(weightValue, 2) * 100, '%')  
+    valueBox(
+      weightValue, "Bio-Loop Weight")
+  })
   
-  # output$countPlot <- renderPlotly({
-  #   df <- LoopInfo()
-  #   df <- head(df, 10)
-  #   p <- plot_ly(df, x = loop, y = count, type = 'bar')
-  #   
-  #   p
-  # })
+  # output sim steps
+  output$simSteps <- renderValueBox({
+    df <- fileReaderData()
+    stepsValue <- df[, 'steps'] %>% sum()
+    valueBox(
+      stepsValue, "Total Sim Steps")
+  })
+  # output number of loops
+  output$numLoops <- renderValueBox({
+    df <- fileReaderData()
+    numOfLoops <- nrow(df)
+    valueBox(
+      numOfLoops, "Num of Unique Loops")
+  })
+  
+  # output bubble chart
+  output$bubblePlot <- renderPlotly({
+    data <- fileReaderData()
+      
+    pMargin <- list(b = 80, l = 80, r = 80, t = 90, pad = 4)
+    # yy <- as.formula(paste("~", input$selectedGroupby))
+    # sizeValue <- sapply(data$opportunity, function(value){
+    #   if (value > 0) {3*sqrt(value)}#modify the size
+    #   else {value <- 0}
+    # })
+    p <- plot_ly(data, x = data$weight, y = data$steps, name = 'bubble', type = 'scatter',
+                 hoverinfo = "text", source = 'bubbleclick',
+                 text = paste("Loop Detail:", data$loop,
+                              "<br>Loop Appears", data$count),
+                 mode = "markers", marker = list(color = data$count, size = data$weight * 500, colorscale = 'Portland',
+                                                 colorbar = list(title = 'Count'))) %>%
+      layout(
+        title = paste('Loop Bubble Chart'),
+        xaxis = list(title =  "Weight of Loops"),
+        yaxis = list(title = 'States of Loops', zeroline = T),
+        margin = list(t = 80, b = 80)
+      ) %>%
+      # add_annotations(text = "(Click to view detail information below)", 
+      #                 xref = 'paper', yref = 'paper', x = 0.5, y = -0.3, showarrow = F) %>%
+      add_annotations(text = paste("Size represent the Weight and color represent the Count"),
+                      xref = 'paper', yref = 'paper', x = 0.5, y = 1.1, showarrow = F) %>%
+      config(showLink = F, displayModeBar = F, displaylogo = F)
+    return(p)
+  })
+  
+  # 3d surface
+  output$surface <- renderPlotly({
+    df <- fileReaderData()
+    dataLength <- ceiling(sqrt(nrow(df)))
+    xVec <- c(seq(1, dataLength))
+    xMatrix <- matrix(xVec, nrow = dataLength, ncol = 1)
+    yMatrix <- matrix(xVec, nrow = 1, ncol = dataLength)
+    
+    diff <- dataLength^2 - nrow(df)
+    loopMatrix <- matrix(c(sample(df$count), rep(0, diff)), nrow = dataLength, ncol = dataLength)
+    
+    p <- plot_ly(z = loopMatrix) %>% add_surface() %>% 
+      config(showLink = F, displayModeBar = F, displaylogo = F)
+    
+    return(p)
+  })
+  
+  # change parameters
+  output$multiParamPlot <- renderPlotly({
+    data <- fileReaderData()
+    
+    pMargin <- list(b = 80, l = 80, r = 80, t = 90, pad = 4)
+    # yy <- as.formula(paste("~", input$selectedGroupby))
+    # sizeValue <- sapply(data$opportunity, function(value){
+    #   if (value > 0) {3*sqrt(value)}#modify the size
+    #   else {value <- 0}
+    # })
+    p <- plot_ly(data, x = data$weight, y = data$steps, name = 'bubble', type = 'scatter',
+                 hoverinfo = "text", source = 'bubbleclick',
+                 text = paste("Loop Detail:", data$loop,
+                              "<br>Loop Appears", data$count),
+                 mode = "markers", marker = list(color = data$count, size = data$weight * 500, colorscale = 'Portland',
+                                                 colorbar = list(title = 'Count'))) %>%
+      layout(
+        title = paste('Loop Bubble Chart'),
+        xaxis = list(title =  "Weight of Loops"),
+        yaxis = list(title = 'States of Loops', zeroline = T),
+        margin = list(t = 80, b = 80)
+      ) %>%
+      # add_annotations(text = "(Click to view detail information below)", 
+      #                 xref = 'paper', yref = 'paper', x = 0.5, y = -0.3, showarrow = F) %>%
+      add_annotations(text = paste("Size represent the Weight and color represent the Count"),
+                      xref = 'paper', yref = 'paper', x = 0.5, y = 1.1, showarrow = F) %>%
+      config(showLink = F, displayModeBar = F, displaylogo = F)
+    return(p)
+  })
+  
+  
   
   
 })
+
+
+
+
+
+
