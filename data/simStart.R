@@ -4,7 +4,7 @@
 #VER.: 1.0
 #HIST: XL initial 03/27/2017
 
-library(data.table)
+library(dtplyr)
 
 source("R/functions.R")
 source("stateSimulation.R")
@@ -49,7 +49,7 @@ DecomposeTrj <- function(alpha, beta, gamma, matrixA, simTime, output) {
         break
       }
     }
-    cat('chunk', i, ', RR=', RobustRatio(output$flux), '\n')
+    cat('chunk', i, 'miu=', beta, 'RR=', RobustRatio(output$flux), '\n')
   }
   arrange(output, desc(count))
   return(output)
@@ -80,6 +80,33 @@ chgParam <- function(whichParam, results) {
   )
   
 }
+
+runAllPara <- function() {
+  alpha <- 7
+  gamma <- 0.6
+  vecBeta <- c(seq(0.1,0.9,0.1), 1:9)
+  
+  for(i in vecBeta) {
+    fileName <- paste('data/processed/loop.a7.b', i, '.c0.6.Rds', sep = '')
+    if(file.exists(fileName)) {
+      results <- readRDS(fileName)
+    }
+    results <- DecomposeTrj(alpha, i, gamma, matrixA, 1e5, results)
+    saveRDS(results, fileName)
+    
+    # create rr and sim time
+    
+    simTime <- results[, 'steps'] %>% sum()
+    rr <- RobustRatio(results$weight)
+    if(!file.exists('data/processed/rrInfo.txt')) {
+      cat('miu', 'RR', 'simTime', '\n', file = 'data/processed/rrInfo.txt')
+    }
+    cat(i, rr, simTime, '\n', file = 'data/processed/rrInfo.txt', append = T)
+  }
+  
+}
+
+repeat(runAllPara())
 
 
 
