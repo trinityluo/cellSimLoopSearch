@@ -1,14 +1,58 @@
 # calculate flux with para change
+library(dtplyr)
+
 source("R/functions.R")
 source("stateSimulation.R")
-source("data/simStart.R")
 
-gList <- list()
-for(i in seq(0.01, 0.03, 0.01)){
-  gList[i*100] <- DecomposeTrj(7, 5, i, matrixA, 1e4, results) %>%
-    summarise(gamma = i, flux = max(flux))
+# empty data table for future results
+results <- data.table(count = numeric(), loops = character(), steps = numeric(),
+                      flux = numeric(), weight = numeric())
 
-  return(gList)
+# sum of states for all loops
+totalSteps <- 0
+
+# function to decompose trajectories
+CalFlux <- function(fileNames, chunk, output) {
+  dfList <- read_csv(fileNames, col_names = FALSE) %>% 
+    split(., (seq(nrow(.))-1) %/% chunk)
+  
+  for(i in 1:round(length(dfList), 0)) {
+    
+    trj <- dfList[[i]][[1]]
+    #cat('trj', class(trj), '\n')
+    if(!exists('output')) {
+      output <- data.table(count = numeric(), loops = character(), steps = numeric(),
+                           flux = numeric(), weight = numeric())
+    }
+    
+    # make sure output is DT
+    setDT(output)
+    
+    repeat{
+      loop <- RemoveLoop(trj)[['loop']] %>% ReorderLoop()
+      steps <- RemoveLoop(trj)[['steps']]
+      trj <- RemoveLoop(trj)[['newtrj']]
+      # cat('totalsteps before:', totalSteps, '\n')
+      # RemoveLoop() will return NULL at the last step
+      totalSteps <- ifelse(!is.null(steps), totalSteps + steps, totalSteps)
+      # cat(', loop:', loop, ', steps:', steps, ', totalsteps:', totalSteps, '\n')
+      if(!is.null(loop)){
+        output <- UniqueLoop(loop, output, steps)
+        output[, flux := count/totalSteps]
+        output[, weight := count/sum(count)]
+        
+        
+      } else {
+        break
+      }
+    }
+    cat('chunk', i, 'file=', fileNames, '\n')
+  }
+  arrange(output, desc(count))
+  saveRDS(output, paste0('data/processed/gamma/result.', substring(fileNames, 28, 32), '.Rds'))
+  return(NULL)
 }
 
+#results <- CalFlux("data/raw/trj/trj.a7.0.b5.0.c0.01.out", 1024, results)
 
+lapply(paste0(list.files('data/raw/trj', full.names = T)[1:8]), CalFlux, 5000, results)

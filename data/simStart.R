@@ -106,7 +106,7 @@ runAllPara <- function() {
   
 }
 
-repeat(runAllPara())
+#repeat(runAllPara())
 
 
 
