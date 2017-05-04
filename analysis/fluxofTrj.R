@@ -1,5 +1,6 @@
 # calculate flux with para change
 library(dtplyr)
+library(readr)
 
 source("R/functions.R")
 source("stateSimulation.R")
@@ -55,4 +56,4 @@ CalFlux <- function(fileNames, chunk, output) {
 
 #results <- CalFlux("data/raw/trj/trj.a7.0.b5.0.c0.01.out", 1024, results)
 
-lapply(paste0(list.files('data/raw/trj', full.names = T)[1:8]), CalFlux, 5000, results)
+lapply(paste0(list.files('data/raw/trj', full.names = T)[9:16]), CalFlux, 5000, results)
