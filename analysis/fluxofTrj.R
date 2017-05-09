@@ -47,7 +47,7 @@ CalFlux <- function(fileNames, chunk, output) {
         break
       }
     }
-    cat('chunk', i, 'file=', fileNames, '\n')
+    cat('chunk', i, '/', 1e7/2000, 'file=', fileNames, '\n')
   }
   arrange(output, desc(count))
   saveRDS(output, paste0('data/processed/gamma/result.', substring(fileNames, 28, 32), '.Rds'))
@@ -56,4 +56,4 @@ CalFlux <- function(fileNames, chunk, output) {
 
 #results <- CalFlux("data/raw/trj/trj.a7.0.b5.0.c0.01.out", 1024, results)
 
-lapply(paste0(list.files('data/raw/trj', full.names = T)[9:16]), CalFlux, 5000, results)
+lapply(paste0(list.files('data/raw/trj', full.names = T)[29:30]), CalFlux, 2000, results)
