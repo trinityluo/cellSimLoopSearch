@@ -47,13 +47,14 @@ CalFlux <- function(fileNames, chunk, output) {
         break
       }
     }
-    cat('chunk', i, '/', 1e7/2000, 'file=', fileNames, '\n')
+    cat('chunk', i, '/', 1e7/5000, 'file=', fileNames, '\n')
   }
   arrange(output, desc(count))
-  saveRDS(output, paste0('data/processed/gamma/result.', substring(fileNames, 28, 32), '.Rds'))
+  saveRDS(output, paste0('data/processed/gamma.b0.8/result.', substring(fileNames, 35, 39), '.Rds'))
   return(NULL)
 }
 
 #results <- CalFlux("data/raw/trj/trj.a7.0.b5.0.c0.01.out", 1024, results)
 
-lapply(paste0(list.files('data/raw/trj', full.names = T)[29:30]), CalFlux, 2000, results)
+# first run 1-3 5-7 9-11 13-15 17-19 21-23 25-27 29-30
+lapply(paste0(list.files('data/raw/trj.b0.8.g', full.names = T)[c(29:30)]), CalFlux, 5000, results)
